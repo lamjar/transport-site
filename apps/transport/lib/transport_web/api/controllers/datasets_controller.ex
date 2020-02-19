@@ -2,8 +2,9 @@ defmodule TransportWeb.API.DatasetController do
   use TransportWeb, :controller
   alias Helpers
   alias OpenApiSpex.Operation
-  alias DB.{Commune, Dataset, Repo}
-  alias TransportWeb.API.Schemas.DatasetsResponse
+  alias DB.{AOM, Commune, Dataset, Region, Repo}
+  alias TransportWeb.API.Schemas.{AutocompleteResponse, DatasetsResponse}
+  import Ecto.{Query}
 
   @spec open_api_operation(any) :: Operation.t()
   def open_api_operation(action), do: apply(__MODULE__, :"#{action}_operation", [])
@@ -114,14 +115,55 @@ defmodule TransportWeb.API.DatasetController do
     }
   end
 
-  def autocomplete(%Plug.Conn{} = conn, %{"q" => query}) do
-    IO.puts(query)
+  defp get_result_url(%{id: id, type: "commune"}) do
+    "/datasets/commune/#{id}"
+  end
 
-    Commune
-    |> Repo.get_by(nom: query)
+  defp get_result_url(%{id: id, type: "region"}) do
+    "/datasets/region/#{id}"
+  end
+
+  defp get_result_url(%{id: id, type: "aom"}) do
+    "/datasets/aom/#{id}"
+  end
+
+  @spec autocomplete(Plug.Conn.t(), map) :: Plug.Conn.t()
+  def autocomplete(%Plug.Conn{} = conn, %{"q" => query}) do
+    communes =
+      Repo.all(
+        from(c in Commune,
+          where: ilike(c.nom(), ^"%#{query}%"),
+          order_by: [asc: fragment("levenshtein(?, ?)", c.nom, ^query), asc: c.nom],
+          select: %{nom: c.nom, id: c.insee, type: "commune"},
+          limit: 5
+        )
+      )
+
+    regions =
+      Repo.all(
+        from(c in Region,
+          where: ilike(c.nom(), ^"%#{query}%"),
+          select: %{nom: c.nom, id: c.insee, type: "region"},
+          limit: 2
+        )
+      )
+
+    aom =
+      Repo.all(
+        from(c in AOM,
+          where: ilike(c.nom(), ^"%#{query}%"),
+          select: %{nom: c.nom, id: c.id, type: "aom"},
+          limit: 2
+        )
+      )
+
+    results =
+      (communes ++ regions ++ aom)
+      |> Enum.map(&%{name: &1.nom, type: &1.type, url: get_result_url(&1)})
 
     conn
-    |> render(%{query: query})
+    |> assign(:data, results)
+    |> render()
   end
 
   @spec autocomplete_operation() :: Operation.t()
@@ -129,11 +171,11 @@ defmodule TransportWeb.API.DatasetController do
     %Operation{
       tags: ["datasets"],
       summary: "Autocomplete search for datasets",
-      description: "For one dataset, show its associated resources, url and validity date",
-      operationId: "API.DatasetController.datasets_by_id",
-      parameters: [Operation.parameter(:id, :path, :string, "id")],
+      description: "Given a search input, return potentialy corresponding results with the associated url",
+      operationId: "API.DatasetController.datasets_autocomplete",
+      parameters: [Operation.parameter(:q, :path, :string, "query")],
       responses: %{
-        200 => Operation.response("Dataset", "application/json", DatasetsResponse)
+        200 => Operation.response("Dataset", "application/json", AutocompleteResponse)
       }
     }
   end
