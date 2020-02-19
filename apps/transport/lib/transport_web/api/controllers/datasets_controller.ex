@@ -115,51 +115,38 @@ defmodule TransportWeb.API.DatasetController do
     }
   end
 
-  defp get_result_url(%{id: id, type: "commune"}) do
+  defp get_result_url(%{"id" => id, "type" => "commune"}) do
     "/datasets/commune/#{id}"
   end
 
-  defp get_result_url(%{id: id, type: "region"}) do
+  defp get_result_url(%{"id" => id, "type" => "region"}) do
     "/datasets/region/#{id}"
   end
 
-  defp get_result_url(%{id: id, type: "aom"}) do
+  defp get_result_url(%{"id" => id, "type" => "aom"}) do
     "/datasets/aom/#{id}"
   end
 
   @spec autocomplete(Plug.Conn.t(), map) :: Plug.Conn.t()
   def autocomplete(%Plug.Conn{} = conn, %{"q" => query}) do
-    communes =
-      Repo.all(
-        from(c in Commune,
-          where: ilike(c.nom(), ^"%#{query}%"),
-          order_by: [asc: fragment("levenshtein(?, ?)", c.nom, ^query), asc: c.nom],
-          select: %{nom: c.nom, id: c.insee, type: "commune"},
-          limit: 5
-        )
-      )
-
-    regions =
-      Repo.all(
-        from(c in Region,
-          where: ilike(c.nom(), ^"%#{query}%"),
-          select: %{nom: c.nom, id: c.insee, type: "region"},
-          limit: 2
-        )
-      )
-
-    aom =
-      Repo.all(
-        from(c in AOM,
-          where: ilike(c.nom(), ^"%#{query}%"),
-          select: %{nom: c.nom, id: c.id, type: "aom"},
-          limit: 2
-        )
+    commune =
+      Ecto.Adapters.SQL.query!(
+        Repo,
+        "(SELECT c.nom as nom, c.insee as id, 'commune' as type FROM commune c where nom ilike '%' || $1 || '%' order by levenshtein(c.nom, $1) limit 5)
+        UNION
+        (SELECT r.nom as nom, r.insee as id, 'region' as type FROM region r where r.nom ilike '%' || $1 || '%' order by levenshtein(r.nom, $1) limit 2)
+        UNION
+        (SELECT a.nom as nom, CAST(a.id as varchar) as id, 'aom' as type FROM aom a where a.nom ilike '%' || $1 || '%' order by levenshtein(a.nom, $1) limit 2)
+        ",
+        [query]
       )
 
     results =
-      (communes ++ regions ++ aom)
-      |> Enum.map(&%{name: &1.nom, type: &1.type, url: get_result_url(&1)})
+      commune.rows
+      |> Enum.map(fn r ->
+        res = Enum.zip(commune.columns, r) |> Enum.into(%{})
+        %{name: res["nom"], type: res["type"], url: get_result_url(res)}
+      end)
 
     conn
     |> assign(:data, results)
