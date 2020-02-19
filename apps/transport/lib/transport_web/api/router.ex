@@ -29,6 +29,7 @@ defmodule TransportWeb.API.Router do
 
     scope "/datasets" do
       get("/", TransportWeb.API.DatasetController, :datasets)
+      get("/autocomplete", TransportWeb.API.DatasetController, :autocomplete)
       get("/:id", TransportWeb.API.DatasetController, :by_id)
     end
   end

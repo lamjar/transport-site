@@ -2,7 +2,7 @@ defmodule TransportWeb.API.DatasetController do
   use TransportWeb, :controller
   alias Helpers
   alias OpenApiSpex.Operation
-  alias DB.{Dataset, Repo}
+  alias DB.{Commune, Dataset, Repo}
   alias TransportWeb.API.Schemas.DatasetsResponse
 
   @spec open_api_operation(any) :: Operation.t()
@@ -111,6 +111,30 @@ defmodule TransportWeb.API.DatasetController do
     %{
       "name" => aom.nom,
       "siren" => aom.siren
+    }
+  end
+
+  def autocomplete(%Plug.Conn{} = conn, %{"q" => query}) do
+    IO.puts(query)
+
+    Commune
+    |> Repo.get_by(nom: query)
+
+    conn
+    |> render(%{query: query})
+  end
+
+  @spec autocomplete_operation() :: Operation.t()
+  def autocomplete_operation do
+    %Operation{
+      tags: ["datasets"],
+      summary: "Autocomplete search for datasets",
+      description: "For one dataset, show its associated resources, url and validity date",
+      operationId: "API.DatasetController.datasets_by_id",
+      parameters: [Operation.parameter(:id, :path, :string, "id")],
+      responses: %{
+        200 => Operation.response("Dataset", "application/json", DatasetsResponse)
+      }
     }
   end
 end
