@@ -143,10 +143,8 @@ defmodule TransportWeb.API.DatasetController do
 
     results =
       commune.rows
-      |> Enum.map(fn r ->
-        res = Enum.zip(commune.columns, r) |> Enum.into(%{})
-        %{name: res["nom"], type: res["type"], url: get_result_url(res)}
-      end)
+      |> Enum.map(&(Enum.zip(commune.columns, &1) |> Enum.into(%{})))
+      |> Enum.map(fn res -> %{name: res["nom"], type: res["type"], url: get_result_url(res)} end)
 
     conn
     |> assign(:data, results)
